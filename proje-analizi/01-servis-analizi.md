@@ -49,7 +49,7 @@ Sistem hiçbir veri saklayamaz, yeniden başlatıldıktan sonra tüm bilgiler ka
 - İnsan okunabilir log ve hata mesajları.
 
 **env_file: .env**
-- Proje kökünde `.env` dosyası arar, içindeki tüm `KEY=VALUE` satırlarını environment'e yükledi.
+- Proje kökünde `.env` dosyası arar, içindeki tüm `KEY=VALUE` satırlarını environment'e yükler.
 
 **environment:**
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — PostgreSQL imajı bu değişkenleri tanır ve başlatıldığında veritabanını ve superuser'ı bu parametrelerle oluşturur.
@@ -594,7 +594,7 @@ depends_on:
     condition: service_healthy
 ```
 - FastAPI healthy olana kadar beklenir.
-- Birden, FreeRADIUS REST modülü API'ye bağlanmaya çalışsa api kapalıysa hata verir.
+- Eğer FreeRADIUS REST modülü API'ye bağlanmaya çalışırsa ve API kapalıysa hata verir.
 
 **healthcheck:**
 ```yaml
@@ -873,7 +873,7 @@ Toplam başlangıç süresi: ~30-40 saniye (build cache ise ~15 saniye)
 
 ---
 
-## Durduğu ve Temizleme İşlemleri
+## Durdurma ve Temizleme İşlemleri
 
 ```yaml
 # Tüm servisleri durdur (volumeler korunur)
