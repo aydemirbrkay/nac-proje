@@ -9,9 +9,8 @@
 | **Derlenmiş Python (.pyc)** | 14 |
 | **Shell betikleri (.sh)** | 2 |
 | **Docker dosyaları** | 1 |
-| **Dokümantasyon/SQL/Config** | 4 |
-| **Python paket dizinleri (__pycache__)** | 3 |
-| **Toplam** | **41** |
+| **Dokümantasyon/Config** | 6 |
+| **Toplam dosya** | **41** |
 
 ## Tam Proje Ağacı
 
@@ -160,6 +159,23 @@ nac-system/
 | Dosya | Amaç |
 |-------|------|
 | `init.sql` | Tabloları, sekansları, indeksleri ve seed verilerini oluştur |
+
+---
+
+### Dokümantasyon ve Konfigürasyon Dosyaları
+
+**İçeriği:** Proje belgesi, API bağımlılıkları ve veritabanı/RADIUS sunucu konfigürasyonları.
+
+**Dosya sayısı:** 6 dosya
+
+| Dosya | Amaç |
+|-------|------|
+| `README.md` | Proje belgesi ve kurulum talimatları |
+| `api/requirements.txt` | Python bağımlılıkları (FastAPI, SQLAlchemy, asyncpg vb.) |
+| `db/init.sql` | PostgreSQL tablo, sekans ve seed verisi DDL'leri |
+| `freeradius/clients.conf` | RADIUS client'larını tanımla (IP adresleri, shared secret) |
+| `freeradius/mods-enabled/rest` | REST modülü konfigürasyonu (FastAPI endpoint URL'leri) |
+| `freeradius/sites-enabled/default` | Varsayılan RADIUS sitesi (kimlik doğrulama, yetkilendirme, accounting) |
 
 ---
 
