@@ -27,6 +27,8 @@ rest {
     # FreeRADIUS "authorize" aşamasında bu blok çalışır
     # FastAPI /auth endpoint'ine çağrı → password kontrolü
     # HTTP 200 = başarılı, HTTP 401 = başarısız
+    # force_to = "plain": yalnızca HTTP status code önemli,
+    #   response body'deki JSON atribütleri parse edilmez (kasıtlı)
     authorize {
         uri  = "${..connect_uri}/auth"
         method = "post"
@@ -41,14 +43,14 @@ rest {
     # ── Post-Authorization (VLAN/Policy Ataması) ──
     # Auth başarılı olduktan sonra çağrılır
     # FastAPI /authorize endpoint'ine çağrı → VLAN ve policy bilgisi
+    # NOT: force_to kullanılmıyor — JSON response parse edilmeli,
+    #   böylece Tunnel-Type/Medium-Type/Private-Group-Id reply paketine eklenir.
     post-auth {
         uri  = "${..connect_uri}/authorize"
         method = "post"
         body = "json"
 
         data = "{\"username\":\"%{User-Name}\",\"calling_station_id\":\"%{Calling-Station-Id}\"}"
-
-        force_to = "plain"
     }
 
 
