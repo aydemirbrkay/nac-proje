@@ -1,0 +1,84 @@
+# ============================================================
+# FreeRADIUS — Default Virtual Server (REST-based Auth)
+# ============================================================
+# Virtual server: FreeRADIUS'un istek işleme pipeline'ıdır.
+# NAC sistemi tamamen REST API ile çalışır:
+#
+#   1. authorize  → FastAPI'ye auth isteği → accept/reject
+#   2. authenticate → Boş (auth zaten authorize'da yapıldı)
+#   3. post-auth → VLAN ve policy atribütlerini ekle
+#   4. accounting → Oturum kayıt (Start/Update/Stop)
+#
+# ============================================================
+
+server default {
+
+    # ── Dinlenecek portlar ──
+    listen {
+        type = auth
+        ipaddr = *
+        port = 1812
+    }
+
+    listen {
+        type = acct
+        ipaddr = *
+        port = 1813
+    }
+
+    # ════════════════════════════════════════════
+    # AUTHORIZE — REST ile entegre kimlik doğrulama
+    # ════════════════════════════════════════════
+    # Bu bölümde:
+    # 1. Gelen isteği temizle
+    # 2. FastAPI'ye kimlik doğrulama isteği gönder
+    # 3. Sonuca göre accept/reject karar ver
+    authorize {
+        # Gelen paketteki User-Name'i temizle/normalize et
+        filter_username
+
+        # FastAPI'ye kimlik doğrulama isteği gönder (/auth endpoint)
+        # REST modülü:
+        # - HTTP 200 = başarılı kimlik doğrulama
+        # - HTTP 401 = başarısız kimlik doğrulama → otomatik reject
+        rest
+
+        # REST başarılı olunca, authenticate bölümünü atla ve direkt accept et
+        # Auth-Type := Accept → authenticate bölümünü çalıştırma, direkt post-auth'a git
+        update control {
+            Auth-Type := Accept
+        }
+    }
+
+    # ════════════════════════════════════════════
+    # AUTHENTICATE — Boş (authorization'da yapıldı)
+    # ════════════════════════════════════════════
+    # REST-based auth için authenticate bölümü gerekli değil
+    # Auth ve authz tamamen authorize'da yapıldı
+    authenticate {
+        # Boş - rest authorization'da halledildi
+    }
+
+    # ════════════════════════════════════════════
+    # POST-AUTH — VLAN ve policy atribütlerini ekle
+    # ════════════════════════════════════════════
+    # Bu bölüm auth başarılı olduğunda çalışır
+    post-auth {
+        # Başarılı auth sonrası reply atribütlerini ekle
+        # (VLAN atamaları vb. - REST'ten gelen attributes)
+        rest
+
+        # Başarısız auth durumu (authorization reject)
+        Post-Auth-Type REJECT {
+            rest
+        }
+    }
+
+    # ════════════════════════════════════════════
+    # ACCOUNTING — Oturum kayıt
+    # ════════════════════════════════════════════
+    accounting {
+        # Tüm accounting paketlerini FastAPI'ye gönder
+        rest
+    }
+}

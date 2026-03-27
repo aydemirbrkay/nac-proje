@@ -1,0 +1,77 @@
+# ============================================================
+# FreeRADIUS — rlm_rest Modül Konfigürasyonu
+# ============================================================
+# Bu modül FreeRADIUS'u bir REST client'a dönüştürür.
+# Her auth/authz/acct olayında FastAPI policy engine'e HTTP
+# isteği atar ve dönen yanıta göre karar verir.
+#
+#
+# Akış:Supplicant (laptop)  →  NAS (switch/AP)  →  FreeRADIUS  →  [rlm_rest]  →  FastAPI
+# "bağlanmak istiyorum"   "bunu tanıyor musun?"  "API'ye sorayım"          "şifreyi kontrol edeyim"
+# 
+# "nac-api" hostname'i Docker Compose DNS çözümlemesi ile
+# api konteynerinin IP'sine çözümlenir.
+# ============================================================
+
+rest {
+    # FastAPI policy engine'in adresi
+    # Docker Compose'da service adı DNS olarak çözümlenir
+    connect_uri = "http://nac-api:8000"
+
+    # HTTP bağlantı ayarları
+    connect_timeout = 5.0  # 5 saniye içinde bağlantı kur
+    timeout = 10.0         # cevap bekleme süresi
+
+
+    # ── Authorization (Kimlik Doğrulama) ──
+    # FreeRADIUS "authorize" aşamasında bu blok çalışır
+    # FastAPI /auth endpoint'ine çağrı → password kontrolü
+    # HTTP 200 = başarılı, HTTP 401 = başarısız
+    authorize {
+        uri  = "${..connect_uri}/auth"
+        method = "post"
+        body = "json"
+
+        # FreeRADIUS değişkenlerini JSON body'ye map'le
+        data = "{\"username\":\"%{User-Name}\",\"password\":\"%{User-Password}\",\"calling_station_id\":\"%{Calling-Station-Id}\"}"
+
+        force_to = "plain"
+    }
+
+    # ── Post-Authorization (VLAN/Policy Ataması) ──
+    # Auth başarılı olduktan sonra çağrılır
+    # FastAPI /authorize endpoint'ine çağrı → VLAN ve policy bilgisi
+    post-auth {
+        uri  = "${..connect_uri}/authorize"
+        method = "post"
+        body = "json"
+
+        data = "{\"username\":\"%{User-Name}\",\"calling_station_id\":\"%{Calling-Station-Id}\"}"
+
+        force_to = "plain"
+    }
+
+
+    # ── Accounting ──
+    # Oturum başlangıç/güncelleme/bitiş olaylarında çağrılır
+    accounting {
+        uri  = "${..connect_uri}/accounting"
+        method = "post"
+        body = "json"
+
+        data = "{\"username\":\"%{User-Name}\",\"acct_status_type\":\"%{Acct-Status-Type}\",\"acct_session_id\":\"%{Acct-Session-Id}\",\"acct_unique_session_id\":\"%{Acct-Unique-Session-Id}\",\"nas_ip_address\":\"%{NAS-IP-Address}\",\"nas_port_id\":\"%{NAS-Port-Id}\",\"acct_session_time\":\"%{Acct-Session-Time}\",\"acct_input_octets\":\"%{Acct-Input-Octets}\",\"acct_output_octets\":\"%{Acct-Output-Octets}\",\"acct_terminate_cause\":\"%{Acct-Terminate-Cause}\",\"framed_ip_address\":\"%{Framed-IP-Address}\",\"calling_station_id\":\"%{Calling-Station-Id}\"}"
+
+        force_to = "plain"
+    }
+
+    # Bağlantı havuzu — performans için
+    pool {
+        start = 5
+        min = 3
+        max = 20
+        spare = 5
+        uses = 0
+        lifetime = 0
+        idle_timeout = 60
+    }
+}
