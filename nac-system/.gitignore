@@ -1,0 +1,25 @@
+# Environment (secret'lar)
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes (yerel)
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

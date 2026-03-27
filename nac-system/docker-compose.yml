@@ -1,0 +1,112 @@
+services:
+  # ── PostgreSQL: Kullanıcı, grup ve accounting veritabanı ──
+  postgres:
+    image: postgres:18-alpine
+    container_name: nac-postgres
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nac_db}
+      POSTGRES_USER: ${POSTGRES_USER:-nac_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nac_dev_2024}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - nac-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nac_admin} -d ${POSTGRES_DB:-nac_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Redis: Oturum cache ve rate-limiting ──
+  redis:
+    image: redis:8-alpine
+    container_name: nac-redis
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD:-redis_dev_2024}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - nac-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_2024}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI Policy Engine ──
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: nac-api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://nac_admin:nac_dev_2024@postgres:5432/nac_db}
+      REDIS_URL: ${REDIS_URL:-redis://:redis_dev_2024@redis:6379/0}
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_key_change_this_in_production_32chars}
+      MAX_AUTH_ATTEMPTS: ${MAX_AUTH_ATTEMPTS:-5}
+      AUTH_LOCKOUT_SECONDS: ${AUTH_LOCKOUT_SECONDS:-300}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+    networks:
+      - nac-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FreeRADIUS: RADIUS sunucusu ──
+  freeradius:
+    image: freeradius/freeradius-server:latest-3.2
+    container_name: nac-freeradius
+    ports:
+      - "1812:1812/udp"   # Authentication
+      - "1813:1813/udp"   # Accounting
+      - "18120:18120/udp" # CoA (Change of Authorization)
+    volumes:
+      - ./freeradius/clients.conf:/etc/freeradius/clients.conf
+      - ./freeradius/mods-enabled/rlm_rest:/etc/freeradius/mods-enabled/rest
+      - ./freeradius/sites-enabled/default:/etc/freeradius/sites-enabled/default
+    entrypoint: /bin/sh -c "chmod 600 /etc/freeradius/clients.conf /etc/freeradius/mods-enabled/rest /etc/freeradius/sites-enabled/default && freeradius -X"
+    networks:
+      - nac-network
+    depends_on:
+      api:
+        condition: service_healthy
+    # FreeRADIUS debug modda başlatılıyor (-X) — production'da kaldırılmalı
+    command: ["freeradius", "-X"]
+    healthcheck:
+      test: ["CMD", "radclient", "-c", "1", "-t", "2", "127.0.0.1", "status", "testing123"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pg_data:
+  redis_data:
+
+networks:
+  nac-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
