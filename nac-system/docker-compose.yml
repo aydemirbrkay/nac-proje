@@ -75,7 +75,7 @@ services:
 
   # ── FreeRADIUS: RADIUS sunucusu ──
   freeradius:
-    image: freeradius/freeradius-server:latest-3.2
+    image: freeradius/freeradius-server:3.2
     container_name: nac-freeradius
     ports:
       - "1812:1812/udp"   # Authentication
@@ -85,14 +85,14 @@ services:
       - ./freeradius/clients.conf:/etc/freeradius/clients.conf
       - ./freeradius/mods-enabled/rlm_rest:/etc/freeradius/mods-enabled/rest
       - ./freeradius/sites-enabled/default:/etc/freeradius/sites-enabled/default
+    # chmod 600: FreeRADIUS clients.conf için zorunlu (permission hatası önler)
+    # -X: debug modu — production'da kaldırılmalı
     entrypoint: /bin/sh -c "chmod 600 /etc/freeradius/clients.conf /etc/freeradius/mods-enabled/rest /etc/freeradius/sites-enabled/default && freeradius -X"
     networks:
       - nac-network
     depends_on:
       api:
         condition: service_healthy
-    # FreeRADIUS debug modda başlatılıyor (-X) — production'da kaldırılmalı
-    command: ["freeradius", "-X"]
     healthcheck:
       test: ["CMD", "radclient", "-c", "1", "-t", "2", "127.0.0.1", "status", "testing123"]
       interval: 15s
