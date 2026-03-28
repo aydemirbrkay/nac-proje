@@ -44,9 +44,10 @@ CREATE TABLE IF NOT EXISTS radgroupreply (
     groupname   VARCHAR(64) NOT NULL,
     attribute   VARCHAR(64) NOT NULL,
     op          CHAR(2) NOT NULL DEFAULT ':=',
-    value       VARCHAR(253) NOT NULL
+    value       VARCHAR(253) NOT NULL,
+    UNIQUE (groupname, attribute)
 );
-CREATE INDEX idx_radgroupreply_groupname ON radgroupreply(groupname);
+CREATE INDEX IF NOT EXISTS idx_radgroupreply_groupname ON radgroupreply(groupname);
 
 -- ── radacct: Accounting (oturum) kayıtları ──
 CREATE TABLE IF NOT EXISTS radacct (
@@ -96,28 +97,32 @@ INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES
     ('admin', 'Tunnel-Type', ':=', '13'),
     ('admin', 'Tunnel-Medium-Type', ':=', '6'),
     ('admin', 'Tunnel-Private-Group-Id', ':=', '10'),
-    ('admin', 'Filter-Id', ':=', 'admin-acl');
+    ('admin', 'Filter-Id', ':=', 'admin-acl')
+ON CONFLICT (groupname, attribute) DO NOTHING;
 
 -- Employee grubu → VLAN 20
 INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES
     ('employee', 'Tunnel-Type', ':=', '13'),
     ('employee', 'Tunnel-Medium-Type', ':=', '6'),
     ('employee', 'Tunnel-Private-Group-Id', ':=', '20'),
-    ('employee', 'Filter-Id', ':=', 'employee-acl');
+    ('employee', 'Filter-Id', ':=', 'employee-acl')
+ON CONFLICT (groupname, attribute) DO NOTHING;
 
 -- Guest grubu → VLAN 30
 INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES
     ('guest', 'Tunnel-Type', ':=', '13'),
     ('guest', 'Tunnel-Medium-Type', ':=', '6'),
     ('guest', 'Tunnel-Private-Group-Id', ':=', '30'),
-    ('guest', 'Filter-Id', ':=', 'guest-acl');
+    ('guest', 'Filter-Id', ':=', 'guest-acl')
+ON CONFLICT (groupname, attribute) DO NOTHING;
 
 -- IoT Devices grubu → VLAN 40
 INSERT INTO radgroupreply (groupname, attribute, op, value) VALUES
     ('iot_devices', 'Tunnel-Type', ':=', '13'),
     ('iot_devices', 'Tunnel-Medium-Type', ':=', '6'),
     ('iot_devices', 'Tunnel-Private-Group-Id', ':=', '40'),
-    ('iot_devices', 'Filter-Id', ':=', 'iot-acl');
+    ('iot_devices', 'Filter-Id', ':=', 'iot-acl')
+ON CONFLICT (groupname, attribute) DO NOTHING;
 
 -- ── Kullanıcılar ──
 -- Şifreler bcrypt ile hashlenmiş durumda (Hashed-Password)
