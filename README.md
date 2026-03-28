@@ -405,12 +405,6 @@ nac-system/
 
 ---
 
-## Teknik Analiz Dokümantasyonu
-
-Sistemin detaylı mimari analizi, akış diyagramları ve veritabanı şema belgeleri:
-
-- [NAC Teknik Raporu](docs/README.md)
-
 ---
 
 ## Lisans
