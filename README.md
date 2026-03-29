@@ -74,7 +74,7 @@ Başarılı doğrulama sonrası FreeRADIUS `/authorize` endpoint'inden VLAN atri
 ### 1. Repoyu klonlayın
 
 ```bash
-git clone https://github.com/aydemirbrkay/nac-system.git
+git clone https://github.com/aydemirbrkay/nac-proje.git
 cd nac-system/nac-system
 ```
 
