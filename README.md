@@ -75,7 +75,7 @@ Başarılı doğrulama sonrası FreeRADIUS `/authorize` endpoint'inden VLAN atri
 
 ```bash
 git clone https://github.com/aydemirbrkay/nac-proje.git
-cd nac-system/nac-system
+cd nac-proje/nac-system
 ```
 
 ### 2. Ortam değişkenlerini yapılandırın
