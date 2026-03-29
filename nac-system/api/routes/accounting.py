@@ -23,7 +23,9 @@ from services.redis_service import redis_client
 # Grup → Birim eşleştirmesi
 # burada FreeRADIUS'daki grup isimlerini şirketinizdeki birim isimlerine eşleyebilirsiniz.
 # istenildiği takdirde arttırılabilir veya veritabanından dinamik olarak çekilebilir.
+
 DEPARTMENT_MAP = {
+    
     "admin": "IT Yönetimi",
     "employee": "Şirket Çalışanları",
     "guest": "Misafir / Dış Erişim",

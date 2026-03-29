@@ -61,9 +61,16 @@ async def authorize(
     username = request.username
     logger.info(f"Authorize isteği: username={username}")
 
-    # ── 1. MAB kontrolü ──
+    # ── 1. MAB (MAC Authentication Bypass) kontrolü ──
+    # Bazı cihazların (yazıcı, IP kamera, IoT sensör vb.) kullanıcı adı/şifre
+    # girme yeteneği yoktur. Bu cihazlar ağa bağlanırken kimlik bilgisi yerine
+    # MAC adreslerini gönderir — buna MAB denir.
+    # calling_station_id alanı MAC adresi taşır; doluysa bu bir MAB isteğidir.
     if request.calling_station_id:
         mac = normalize_mac(request.calling_station_id)
+
+        # MAC adresi mac_devices tablosunda kayıtlı ve aktif mi?
+        # Kayıtlı cihazlara önceden bir grup atanmıştır (örn: iot_devices → VLAN 40).
         stmt = select(MacDevice).where(
             MacDevice.mac_address == mac,
             MacDevice.is_active == True,
@@ -72,22 +79,28 @@ async def authorize(
         device = result.scalar_one_or_none()
 
         if device:
+            # Kayıtlı cihaz: cihazın grubuna göre VLAN atribütlerini döndür.
+            # Politika: Kayıtlı IoT/yazıcı cihazları kendi VLAN segmentine yerleşir.
             return JSONResponse(content=await _build_authorize_response(device.groupname, db))
 
-        # Bilinmeyen cihaz → guest VLAN 30
+        # Bilinmeyen MAC adresi → Güvenlik politikası gereği en kısıtlı VLAN'a al.
+        # Politika: Tanınmayan cihazlar misafir ağına (VLAN 30) düşer, tam erişim engellenir.
+        # Filter-Id: Switch'e uygulanacak ACL adı — misafir trafiğini kısıtlar.
         logger.info(f"Bilinmeyen MAC, guest VLAN atanıyor: {mac}")
         return JSONResponse(content={
-            "result": "accept",
-            "group": "guest",
-            "vlan_id": "30",
-            # rlm_rest uyumlu düz RADIUS atribütleri:
-            "Tunnel-Type": "13",
-            "Tunnel-Medium-Type": "6",
-            "Tunnel-Private-Group-Id": "30",
-            "Filter-Id": "guest-acl",
+            "Tunnel-Type": "13",           # 13 = VLAN (IEEE 802.1Q standardı)
+            "Tunnel-Medium-Type": "6",     # 6  = IEEE 802 (Ethernet)
+            "Tunnel-Private-Group-Id": "30",  # VLAN ID 30 → Misafir ağı
+            "Filter-Id": "guest-acl",      # Switch ACL → internet dışı erişimi engeller
         })
 
-    # ── 2. Normal kullanıcı ──
+    # ── 2. Normal kullanıcı yetkilendirmesi ──
+    # MAB değilse kullanıcı adı/şifre ile kimliği doğrulanmış bir kullanıcıdır.
+    # Kullanıcının hangi gruba atandığını radusergroup tablosundan öğren.
+    # Grup, erişim politikasını belirler:
+    #   admin    → VLAN 10 (Yönetim ağı   — tam erişim)
+    #   employee → VLAN 20 (Şirket ağı    — iç kaynaklara erişim)
+    #   guest    → VLAN 30 (Misafir ağı   — yalnızca internet)
     stmt = select(RadUserGroup).where(
         RadUserGroup.username == username
     ).order_by(RadUserGroup.priority)
@@ -95,6 +108,8 @@ async def authorize(
     user_group = result.scalar_one_or_none()
 
     if user_group is None:
+        # Gruba atanmamış kullanıcı → erişim reddedilir.
+        # Politika: Grupsuz kullanıcıya hiçbir VLAN atanmaz, ağa giremez.
         logger.warning(f"Kullanıcı grubunda değil: {username}")
         return JSONResponse(
             status_code=404,
@@ -102,9 +117,14 @@ async def authorize(
         )
 
     group = user_group.groupname
+
+    # Gruba ait VLAN ve politika atribütlerini radgroupreply tablosundan çek.
     response_data = await _build_authorize_response(group, db)
 
-    # Kullanıcıya özel reply atribütlerini de ekle (radreply tablosu)
+    # Kullanıcıya özel override atribütleri varsa grup politikasının üzerine yaz.
+    # radreply tablosu: belirli bir kullanıcıya özel VLAN veya ACL tanımlamak için kullanılır.
+    # Örnek: emp_ali normalde VLAN 20'deyken, radreply'a VLAN 10 yazılırsa o kullanıcı
+    # VLAN 10'a atanır — grup politikasından bağımsız bireysel istisna tanımlanmış olur.
     stmt = select(RadReply).where(RadReply.username == username)
     result = await db.execute(stmt)
     user_replies = result.scalars().all()
@@ -116,28 +136,41 @@ async def authorize(
 
 async def _build_authorize_response(group: str, db: AsyncSession) -> dict:
     """
-    Grup bazlı atribütleri toplayıp rlm_rest uyumlu düz dict döner.
+    Grup bazlı atribütleri toplayıp rlm_rest uyumlu flat dict döner.
 
-    RADIUS atribütleri (Tunnel-Type vb.) top-level key olarak eklenir.
-    FreeRADIUS rlm_rest post-auth aşamasında bunları Access-Accept'e yazar.
+    FreeRADIUS 3.2 rlm_rest JSON yanıt formatı:
+      {"Attribute-Name": "value", ...}  — flat, top-level RADIUS attribute key'leri
+    "reply" wrapper'ı FreeRADIUS 3.2'de liste adı değil attribute adı olarak
+    işlendiğinden kabul görmez.
+
+    VLAN atama politikası (radgroupreply tablosundan okunur):
+      Grup        │ Tunnel-Private-Group-Id │ Erişim Seviyesi
+      ────────────┼─────────────────────────┼──────────────────────────────
+      admin       │ 10                      │ Tam erişim (yönetim ağı)
+      employee    │ 20                      │ Şirket iç kaynakları
+      guest       │ 30                      │ Yalnızca internet
+      iot_devices │ 40                      │ Yalnızca IoT servisleri
+
+    Tunnel-Type = 13        → IEEE 802.1Q VLAN tünelleme
+    Tunnel-Medium-Type = 6  → Ethernet (IEEE 802) ortamı
     """
+    # Gruba tanımlı tüm RADIUS reply atribütlerini çek.
+    # radgroupreply tablosu: her grup için Tunnel-Type, Tunnel-Medium-Type,
+    # Tunnel-Private-Group-Id ve varsa Filter-Id gibi politika atribütlerini tutar.
     stmt = select(RadGroupReply).where(RadGroupReply.groupname == group)
     result = await db.execute(stmt)
     group_replies = result.scalars().all()
 
     vlan_id = None
-    # Temel yanıt yapısı (sunum ve loglama için)
-    response: dict = {
-        "result": "accept",
-        "group": group,
-    }
+    response: dict = {}
 
-    # radgroupreply atribütlerini düz (flat) olarak ekle — rlm_rest okur
     for attr in group_replies:
+        # Her atribütü FreeRADIUS'un beklediği düz JSON formatına ekle.
+        # FreeRADIUS bu key'leri Access-Accept paketine RADIUS atribütü olarak koyar,
+        # switch de bu pakete bakarak portu ilgili VLAN'a atar.
         response[attr.attribute] = attr.value
         if attr.attribute == "Tunnel-Private-Group-Id":
             vlan_id = attr.value
 
-    response["vlan_id"] = vlan_id
     logger.info(f"Authorize sonucu: grup={group}, VLAN={vlan_id}")
     return response
